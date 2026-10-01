@@ -23,7 +23,7 @@ jobs:
   # JOB 1: PRUEBAS UNITARIAS 
   # ----------------------------------------------------------------------------
   pruebas_unitarias:
-    name: IE2 - Pruebas Unitarias Automatizadas (PyTest)
+    name:  Pruebas Unitarias Automatizadas (PyTest)
     runs-on: ubuntu-latest
 
     steps:
@@ -63,7 +63,7 @@ jobs:
   # JOB 2: ANÁLISIS DE CÓDIGO Y SEGURIDAD 
   # ----------------------------------------------------------------------------
   analisis_seguridad:
-    name: IE3 - Análisis de Código y Vulnerabilidades (Snyk / SAST)
+    name:  Análisis de Código y Vulnerabilidades (Snyk / SAST)
     runs-on: ubuntu-latest
 
     steps:
@@ -96,7 +96,7 @@ jobs:
           pip-audit -r requirements.txt || true
 
       - name: Configurar Snyk CLI
-        uses: snyk/actions/setup@v4
+        uses: snyk/actions/setup@master
 
       - name: Escaneo de vulnerabilidades en dependencias (Snyk Open Source - SCA)
         run: |
@@ -135,7 +135,7 @@ jobs:
   # JOB 3: CONSTRUCCIÓN DE IMAGEN DOCKER 
   # ----------------------------------------------------------------------------
   construccion_docker:
-    name: IE1 - Contenerización y Construcción Docker
+    name: Contenerización y Construcción Docker
     needs: [pruebas_unitarias, analisis_seguridad]
     runs-on: ubuntu-latest
 
@@ -163,7 +163,7 @@ jobs:
   # JOB 4: DESPLIEGUE EN ENTORNO SIMULADO 
   # ----------------------------------------------------------------------------
   despliegue_simulado:
-    name: IE4 - Despliegue Automático en Entorno Simulado (Docker Compose)
+    name:  Despliegue Automático en Entorno Simulado (Docker Compose)
     needs: [construccion_docker]
     runs-on: ubuntu-latest
 
