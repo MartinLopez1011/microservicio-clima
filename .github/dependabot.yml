@@ -1,0 +1,56 @@
+# ==============================================================================
+# Dependabot Configuration
+# ==============================================================================
+version: 2
+updates:
+  # Monitoreo continuo de vulnerabilidades y actualizaciones de paquetes Python (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Santiago"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "security"
+      - "devops"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # Monitoreo de versiones de acciones en workflows de GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Santiago"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+
+  # Monitoreo de imágenes base de Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Santiago"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "chore(docker)"
+      include: "scope"

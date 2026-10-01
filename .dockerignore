@@ -1,0 +1,38 @@
+# Control de versiones
+.git
+.github
+.gitignore
+
+# Entornos virtuales y paquetes locales
+.venv/
+env/
+venv/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pruebas y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+test_main.py
+requirements-dev.txt
+
+# Documentación y archivos complementarios
+*.md
+*.pdf
+LICENSE
+
+# Artefactos y reportes
+dist/
+build/
+*.egg-info/
+reports/
+
+# Archivos de sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

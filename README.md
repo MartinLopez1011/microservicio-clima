@@ -7,22 +7,25 @@ Microservicio REST desarrollado con Python y FastAPI. Expone un endpoint de cons
 ## Índice
 
 1. [Requisitos e Instalación Local](#requisitos-e-instalación-local)
-2. [Ejecución de Pruebas Automatizadas](#ejecución-de-pruebas-automatizadas)
-3. [Especificación del Endpoint](#especificación-del-endpoint)
-4. [Estrategias y Modelos de Ramificación (Branching Strategies)](#estrategias-y-modelos-de-ramificación-branching-strategies)
+2. [Contenerización con Docker](#contenerización-con-docker)
+3. [Ejecución de Pruebas Automatizadas](#ejecución-de-pruebas-automatizadas)
+4. [Especificación del Endpoint](#especificación-del-endpoint)
+5. [Estrategias y Modelos de Ramificación (Branching Strategies)](#estrategias-y-modelos-de-ramificación-branching-strategies)
    - [Análisis de Modelos: GitFlow, GitHub Flow y Trunk-Based](#análisis-de-modelos-gitflow-github-flow-y-trunk-based)
    - [Tabla Comparativa de Modelos](#tabla-comparativa-de-modelos)
    - [Justificación Técnica del Modelo Seleccionado](#justificación-técnica-del-modelo-seleccionado)
-5. [Guía de Buenas Prácticas para el Uso de Repositorios DevOps](#guía-de-buenas-prácticas-para-el-uso-de-repositorios-devops)
+6. [Guía de Buenas Prácticas para el Uso de Repositorios DevOps](#guía-de-buenas-prácticas-para-el-uso-de-repositorios-devops)
    - [1. Naming de Ramas y Flujos de Merge](#1-naming-de-ramas-y-flujos-de-merge)
    - [2. Convenciones de Mensajes de Commit](#2-convenciones-de-mensajes-de-commit)
    - [3. Estructura del Proyecto y Organización de Carpetas](#3-estructura-del-proyecto-y-organización-de-carpetas)
    - [4. Control de Versiones: SemVer, Git Tags y GitHub Releases](#4-control-de-versiones-semver-git-tags-y-github-releases)
-6. [Integración Continua (CI/CD) y Automatización](#integración-continua-cicd-y-automatización)
-   - [Rol de GitHub Actions en el Ciclo DevOps](#rol-de-github-actions-en-el-ciclo-devops)
-   - [Diseño y Fundamentos del Pipeline](#diseño-y-fundamentos-del-pipeline)
-   - [Diagrama de Flujo del Pipeline](#diagrama-de-flujo-del-pipeline)
-7. [Trazabilidad del Flujo Colaborativo Simulado](#trazabilidad-del-flujo-colaborativo-simulado)
+7. [Integración y Entrega Continua (CI/CD) en GitHub Actions](#integración-y-entrega-continua-cicd-en-github-actions)
+   - [Cumplimiento de Indicadores de Evaluación ](#cumplimiento-de-indicadores-de-evaluación)
+   - [Arquitectura y Diagrama de Flujo del Pipeline](#arquitectura-y-diagrama-de-flujo-del-pipeline)
+   - [Detalle de los Jobs Automatizados](#detalle-de-los-jobs-automatizados)
+   - [Seguridad Continua: Dependabot y Snyk / SonarQube ](#seguridad-continua-dependabot-y-snyk--sonarqube)
+   - [Despliegue en Entorno Simulado con Docker Compose](#despliegue-en-entorno-simulado-con-docker-compose)
+8. [Trazabilidad del Flujo Colaborativo Simulado](#trazabilidad-del-flujo-colaborativo-simulado)
 
 ---
 
@@ -216,19 +219,23 @@ docs(readme): documenta modelos de ramificación, control de versiones y rol de 
 
 ### 3. Estructura del Proyecto y Organización de Carpetas
 
-La arquitectura del repositorio sigue una separación limpia de responsabilidades (Clean Directory Layout), separando código de aplicación, pruebas, pipelines y metadatos de configuración:
+La arquitectura del repositorio sigue una separación limpia de responsabilidades (Clean Directory Layout), separando código de aplicación, pruebas, pipelines, contenerización y metadatos de configuración:
 
 ```text
 microservicio-clima/
 ├── .github/
+│   ├── dependabot.yml           # Configuración de escaneo de dependencias automatizado 
 │   └── workflows/
-│       └── ci.yml               # Definición declarativa del pipeline CI/CD en GitHub Actions
-├── .gitignore                   # Exclusión de archivos binarios, cachés y dependencias locales
-├── main.py                      # Punto de entrada de la aplicación FastAPI y endpoints REST
-├── test_main.py                 # Suite de pruebas automatizadas con pytest y TestClient
+│       └── ci.yml               # Pipeline CI/CD: Tests, Seguridad, Docker y Despliegue 
+├── .dockerignore                # Exclusiones del contexto Docker para builds rápidos y seguros
+├── .gitignore                   # Exclusión de binarios, cachés y entornos virtuales locales
+├── docker-compose.yml           # Orquestación de entorno simulado de despliegue con Healthchecks 
+├── Dockerfile                   # Contenerización segura no-root basada en Python 3.11-slim 
+├── main.py                      # Punto de entrada del microservicio FastAPI y endpoint /weather
+├── test_main.py                 # Suite de pruebas unitarias automatizadas con pytest 
 ├── requirements.txt             # Dependencias de producción estrictamente versionadas
-├── requirements-dev.txt         # Dependencias de desarrollo, linting y pruebas
-├── README.md                    # Documentación técnica integral del proyecto
+├── requirements-dev.txt         # Dependencias de desarrollo, linting y pruebas (pytest, bandit)
+├── README.md                    # Documentación técnica integral del proyecto DevOps
 └── EP1_DOY0101_Estudiante.pdf   # Pauta y especificación de evaluación académica
 ```
 
@@ -281,63 +288,180 @@ Un **GitHub Release** formaliza el paquete de entrega a partir de un Git Tag, pu
 
 ---
 
-## Integración Continua (CI/CD) y Automatización
+## Contenerización con Docker
 
-### Rol de GitHub Actions en el Ciclo DevOps
+El microservicio se encuentra completamente contenerizado mediante una imagen inmutable definida en el [`Dockerfile`](file:///Dockerfile), siguiendo las mejores prácticas de la industria en seguridad, rendimiento y reproducibilidad:
 
-En un modelo DevOps moderno, la **Integración Continua (CI)** tiene como objetivo automatizar la validación del código desde el momento en que un desarrollador propone una modificación, aplicando el principio de **"Shift-Left"** (desplazar la detección de defectos hacia las etapas más tempranas del ciclo de vida del software).
+### Características de la Contenerización:
+1. **Imagen Base Optimizada (`python:3.11-slim`):** Reduce drásticamente la superficie de vulnerabilidades y el peso de la imagen frente a imágenes genéricas.
+2. **Usuario sin Privilegios (`appuser`):** La aplicación se ejecuta bajo un usuario no-root (`appuser`), garantizando el principio de mínimo privilegio (Least Privilege) y evitando posibles escaladas de privilegios en el host.
+3. **Caché de Capas (Layer Caching):** Se copia e instala `requirements.txt` previo al código de negocio, acelerando los tiempos de compilación cuando no cambian las dependencias.
+4. **Healthcheck Nativo:** Se incluye una comprobación de salud periódica mediante `python -c "import urllib.request..."` que evalúa la disponibilidad del endpoint `/weather`.
 
-GitHub Actions actúa como el motor de orquestación en la nube que ejecuta las compuertas de calidad (Quality Gates) mediante:
-1. **Entornos Limpios y Deterministas:** Cada ejecución se realiza en una máquina virtual efímera (`ubuntu-latest`) aprovisionada en la nube, garantizando que el software funcione independientemente del sistema operativo o configuraciones locales del desarrollador.
-2. **Retroalimentación Rápida (Fast Feedback):** Si un cambio introduce un error de sintaxis o rompe un contrato de la API, el equipo es notificado en minutos, bloqueando la integración antes de que el código defectuoso llegue a las ramas compartidas.
-3. **Construcción de Artefactos Inmutables:** El pipeline compila y empaqueta la versión validada en un entregable autocontenido, asegurando que el artefacto que superó las pruebas sea exactamente el mismo que se desplegará en el entorno de ejecución final (principio de inmutabilidad en despliegues).
+### Comandos de Construcción y Ejecución Local con Docker:
 
----
+```bash
+# Construir la imagen Docker localmente
+docker build -t microservicio-clima:latest .
 
-### Diseño y Fundamentos del Pipeline
+# Ejecutar el contenedor mapeando el puerto 8000
+docker run -d --name clima-service -p 8000:8000 microservicio-clima:latest
 
-El archivo de automatización se ubica en `.github/workflows/ci.yml` y está configurado de forma modular:
+# Comprobar estado y healthcheck del contenedor
+docker ps
 
-#### 1. Disparadores Estratégicos (Triggers)
-```yaml
-on:
-  push:
-    branches:
-      - develop
-  pull_request:
-    branches:
-      - main
-      - develop
+# Probar el microservicio en ejecución
+curl http://localhost:8000/weather
+
+# Ver logs del contenedor
+docker logs clima-service
+
+# Detener y eliminar el contenedor
+docker stop clima-service && docker rm clima-service
 ```
-- **`push` a `develop`:** Asegura que cada merge aceptado en la rama de preproducción se mantenga íntegro y que el artefacto más reciente quede empaquetado y listo para pruebas en un entorno cloud simulado.
-- **`pull_request` hacia `main` y `develop`:** Actúa como una compuerta de validación previa (Pre-merge Verification). El repositorio exige que el pipeline apruebe todas las etapas para poder fusionar el PR.
-
-#### 2. Etapas del Pipeline de Ejecución
-
-1. **Checkout del Código (`actions/checkout@v4`):** Descarga el árbol de código del commit disparador en el runner virtual.
-2. **Configuración del Runtime (`actions/setup-python@v5`):** Instala Python 3.11 en el runner y activa el sistema de caché nativo para `pip`, reduciendo el tiempo de descarga de librerías en ejecuciones subsecuentes.
-3. **Instalación de Dependencias:** Instala las dependencias base de la aplicación (`requirements.txt`) y las herramientas de pruebas (`requirements-dev.txt`).
-4. **Verificación de Sintaxis y Linting:** Ejecuta `py_compile` sobre los archivos Python para detectar de forma temprana errores tipográficos o de sintaxis antes de instanciar el servidor.
-5. **Ejecución de Pruebas Automatizadas:** Invoca `pytest` sobre `test_main.py` para certificar la estabilidad de la lógica de negocio y las cabeceras HTTP de la aplicación.
-6. **Empaquetado de la Aplicación:** Comprime los módulos esenciales de ejecución (`main.py` y `requirements.txt`) bajo un identificador unívoco basado en el hash del commit (`microservicio-clima-${{ github.sha }}.zip`), generando un paquete autocontenido listo para distribución.
-7. **Publicación del Artefacto (`actions/upload-artifact@v4`):** Guarda el paquete generado en los servidores de GitHub Actions por un período de retención de 14 días, permitiendo su descarga directa o consumo por futuros pipelines de Despliegue Continuo (CD).
 
 ---
 
-### Diagrama de Flujo del Pipeline
+## Integración y Entrega Continua (CI/CD) en GitHub Actions
+
+El repositorio cuenta con una arquitectura de tubería CI/CD avanzada, orquestada de forma modular a través de GitHub Actions en el archivo [`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml).
+
+### Arquitectura y Diagrama de Flujo del Pipeline
+
+El pipeline implementa paralelismo en las primeras etapas (Shift-Left) y compuertas estrictas de calidad (Quality Gates) antes de la construcción y el despliegue:
 
 ```mermaid
 flowchart TD
-    A([Evento: Push o Pull Request]) --> B[GitHub Actions Runner: ubuntu-latest]
-    B --> C[actions/checkout@v4: Clonar código]
-    C --> D[actions/setup-python@v5: Python 3.11 + Pip Cache]
-    D --> E[Instalar dependencias: requirements.txt y dev]
-    E --> F[Verificación de sintaxis: py_compile]
-    F --> G{Ejecución de pruebas: pytest}
-    G -- Fallo --> H[Pipeline Falla: Notificación y Bloqueo de PR]
-    G -- Éxito --> I[Empaquetado: Generar .zip con SHA de commit]
-    I --> J[actions/upload-artifact@v4: Publicar artefacto de build]
-    J --> K([Pipeline Exitoso: Listo para Despliegue CD])
+    subgraph Triggers [Disparadores Git]
+        T1[Push a develop / main]
+        T2[Pull Request a develop / main]
+    end
+
+    subgraph CI [Fase 1: Validación y Seguridad - Paralela]
+        T1 --> J1[Job: Pruebas Unitarias]
+        T2 --> J1
+        T1 --> J2[Job: Análisis de Seguridad]
+        T2 --> J2
+
+        J1 -->|py_compile + PyTest + JUnit| R1[(Reporte JUnit XML)]
+        J2 -->|Bandit SAST + pip-audit + Snyk SCA/SAST| R2[(Reporte Seguridad)]
+    end
+
+    subgraph Build [Fase 2: Contenerización]
+        J1 --> J3{Compuerta de Calidad Aprobada?}
+        J2 --> J3
+        J3 -->|Éxito| J4[Job:Construcción Docker Buildx]
+        J4 -->|docker build -t sha -t latest| IMG[(Imagen Docker Inmutable)]
+    end
+
+    subgraph CD [Fase 3: Despliegue en Entorno Simulado]
+        J4 --> J5[Job:Despliegue Simulado Docker Compose]
+        J5 --> S1[docker compose up -d]
+        S1 --> S2[Healthcheck Loop]
+        S2 --> S3[Smoke Tests: GET /weather 200 OK + Schema]
+        S3 --> S4[docker compose logs + Diagnostics]
+        S4 --> S5[docker compose down]
+    end
+```
+
+---
+
+### Detalle de los Jobs Automatizados
+
+#### 1. Job `pruebas_unitarias` 
+- **Entorno:** `ubuntu-latest` con Python 3.11.
+- **Compilación de Sintaxis:** Ejecuta `python -m py_compile main.py test_main.py` para prevenir errores de indentación o sintaxis.
+- **Ejecución de Pruebas:** Corre `pytest test_main.py -v --tb=short --junitxml=reports/junit-test-results.xml`, certificando el contrato HTTP, tipado de datos y cabeceras CORS.
+- **Artefactos:** Publica los reportes XML mediante `actions/upload-artifact@v4`.
+
+#### 2. Job `analisis_seguridad` 
+- **Bandit (SAST):** Análisis estático de seguridad sobre el código de la aplicación buscando vulnerabilidades comunes.
+- **pip-audit (SCA):** Auditoría inmediata de paquetes buscando CVEs registrados en la base de datos de PyPI.
+- **Snyk Open Source (SCA) & Snyk Code (SAST):**
+  - Identifica dependencias vulnerables y sugiere parches automáticos.
+  - Analiza estáticamente el código fuente en busca de brechas de seguridad (XSS, inyecciones, fallos de configuración).
+  - *Configuración de Token:* Si se desea sincronizar con el panel en la nube de Snyk, agregue el secreto `SNYK_TOKEN` en `Settings -> Secrets and variables -> Actions` de su repositorio GitHub.
+
+#### 3. Job `construccion_docker` 
+- Requiere la aprobación previa de `pruebas_unitarias` y `analisis_seguridad`.
+- Inicializa el entorno Docker Buildx (`docker/setup-buildx-action@v3`).
+- Compila la imagen etiquetándola con el SHA único del commit (`microservicio-clima:${{ github.sha }}`) y con el tag flotante `latest`.
+- Inspecciona metadatos y arquitectura para certificar la reproducibilidad de la imagen.
+
+#### 4. Job `despliegue_simulado` 
+- **Orquestación:** Instancia el microservicio mediante `docker compose up -d --build` en el runner de GitHub Actions.
+- **Monitoreo de Salud:** Ejecuta un bucle de espera activa (Health loop) hasta comprobar que el contenedor responda satisfactoriamente.
+- **Pruebas de Humo (Smoke Tests):** Ejecuta una petición HTTP en vivo a `http://localhost:8000/weather` y valida mediante un script Python:
+  - Código de respuesta HTTP 200.
+  - Presencia obligatoria de las claves: `location`, `temperature`, `status`, `wind_speed_kmh`.
+  - Validación de valor esperado (`location == "Valparaíso"`).
+- **Diagnóstico y Limpieza:** Imprime los registros (`docker compose logs`) y apaga limpiamente los recursos (`docker compose down -v`).
+
+---
+
+### Seguridad Continua: Dependabot y Snyk / SonarQube 
+
+El proyecto implementa el principio de **DevSecOps** integrando seguridad automatizada en cada nivel:
+
+1. **GitHub Dependabot (`.github/dependabot.yml`):**
+   - Rastreo semanal de dependencias de Python (`requirements.txt`).
+   - Rastreo de acciones de GitHub (`github-actions`).
+   - Rastreo de versiones de imágenes base (`docker`).
+   - Generación automática de Pull Requests con parches de seguridad al detectar vulnerabilidades.
+2. **Snyk / SonarQube:**
+   - **SCA (Software Composition Analysis):** Detecta vulnerabilidades conocidas en librerías de terceros.
+   - **SAST (Static Application Security Testing):** Analiza el código fuente en reposo para identificar debilidades de seguridad antes del despliegue.
+
+---
+
+### Despliegue en Entorno Simulado con Docker Compose 
+
+Para simular el entorno de nube/staging localmente o en el pipeline, se proporciona el archivo [`docker-compose.yml`](file:///docker-compose.yml):
+
+```yaml
+version: '3.8'
+
+services:
+  microservicio-clima:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: microservicio-clima:latest
+    container_name: microservicio-clima-simulado
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=staging
+      - PORT=8000
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/weather')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - clima-network
+
+networks:
+  clima-network:
+    driver: bridge
+```
+
+#### Comandos de Orquestación en Entorno Simulado:
+
+```bash
+# Levantar el microservicio en entorno simulado
+docker compose up -d --build
+
+# Comprobar el estado y healthcheck
+docker compose ps
+
+# Ejecutar prueba de humo sobre el servicio desplegado
+curl http://localhost:8000/weather
+
+# Detener el entorno simulado y remover volúmenes
+docker compose down
 ```
 
 ---

@@ -1,0 +1,31 @@
+version: '3.8'
+
+# ==============================================================================
+# Docker Compose: Entorno Simulado de Despliegue DevOps
+# ==============================================================================
+
+services:
+  microservicio-clima:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: microservicio-clima:latest
+    container_name: microservicio-clima-simulado
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=staging
+      - PORT=8000
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/weather')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - clima-network
+
+networks:
+  clima-network:
+    driver: bridge
