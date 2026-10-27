@@ -2,11 +2,21 @@ services:
   redis-cache:
     image: redis:7-alpine
     container_name: clima-redis
+    restart: unless-stopped
     networks:
       - backend
     volumes:
       - redis_data:/data
-    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -19,24 +29,35 @@ services:
       dockerfile: Dockerfile
     image: microservicio-clima:1.0
     container_name: microservicio-clima
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       - APP_ENV=production
       - REDIS_HOST=redis-cache
+      - PORT=8000
     networks:
       - frontend
       - backend
-    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ulimits:
       nofile:
         soft: 65536
         hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          cpus: "0.20"
+          memory: 128M
     depends_on:
       redis-cache:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/weather')"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -44,7 +65,9 @@ services:
 
 networks:
   frontend:
+    driver: bridge
   backend:
+    driver: bridge
 
 volumes:
   redis_data:
