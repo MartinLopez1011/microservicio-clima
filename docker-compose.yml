@@ -1,31 +1,50 @@
-version: '3.8'
-
-# ==============================================================================
-# Docker Compose: Entorno Simulado de Despliegue DevOps
-# ==============================================================================
-
 services:
-  microservicio-clima:
+  redis-cache:
+    image: redis:7-alpine
+    container_name: clima-redis
+    networks:
+      - backend
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api-clima:
     build:
       context: .
       dockerfile: Dockerfile
-    image: microservicio-clima:latest
-    container_name: microservicio-clima-simulado
-    restart: unless-stopped
+    image: microservicio-clima:1.0
+    container_name: microservicio-clima
     ports:
       - "8000:8000"
     environment:
-      - ENVIRONMENT=staging
-      - PORT=8000
+      - APP_ENV=production
+      - REDIS_HOST=redis-cache
+    networks:
+      - frontend
+      - backend
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    depends_on:
+      redis-cache:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/weather')\" || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000')"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
-    networks:
-      - clima-network
 
 networks:
-  clima-network:
-    driver: bridge
+  frontend:
+  backend:
+
+volumes:
+  redis_data:
