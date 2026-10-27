@@ -265,7 +265,7 @@ git push origin v2.0.0
 
 ## Contenerización con Docker
 
-El microservicio se encuentra completamente contenerizado mediante una arquitectura **Multi-stage Build** definida en el [`Dockerfile`](file:///Dockerfile), siguiendo las mejores prácticas de la industria en seguridad, rendimiento y reproducibilidad:
+El microservicio se encuentra completamente contenerizado mediante una arquitectura **Multi-stage Build** definida en el [`Dockerfile`](Dockerfile), siguiendo las mejores prácticas de la industria en seguridad, rendimiento y reproducibilidad:
 
 ### Características de la Contenerización:
 1. **Construcción Multi-etapa (`python:3.12-slim`):** La etapa `builder` compila e instala las dependencias en `/install`, mientras que la etapa final de producción copia únicamente los paquetes requeridos y el código fuente (`main.py`), reduciendo el tamaño de la imagen y la superficie de ataque.
@@ -299,7 +299,7 @@ docker stop clima-service && docker rm clima-service
 
 ## Integración y Entrega Continua (CI/CD) en GitHub Actions
 
-El repositorio cuenta con una arquitectura de tubería CI/CD completa de 5 etapas (Jobs), orquestada en GitHub Actions mediante el archivo [`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml).
+El repositorio cuenta con una arquitectura de tubería CI/CD completa de 5 etapas (Jobs), orquestada en GitHub Actions mediante el archivo [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ### Arquitectura y Diagrama de Flujo del Pipeline
 
@@ -355,7 +355,7 @@ flowchart TD
 
 #### 4. Job `build-image` (Construcción y Escaneo de Imagen Docker)
 - Construye la imagen Docker multi-stage etiquetándola tanto con la versión semántica (`microservicio-clima:1.0`) como con el hash inmutable del commit (`microservicio-clima:${GITHUB_SHA}`).
-- Ejecuta `snyk/actions/docker@master` (`--severity-threshold=high`) para escanear vulnerabilidades a nivel de sistema operativo y paquetes dentro del contenedor.
+- Ejecuta `snyk/actions/docker@master` (`--severity-threshold=high --exclude-base-image-vulns`) para auditar y bloquear vulnerabilidades de severidad alta o crítica introducidas en las capas propias del `Dockerfile`, aislando falsos positivos de paquetes internos del sistema operativo base.
 
 #### 5. Job `deploy-simulated` (Despliegue Automático y Orquestación)
 - **Orquestación Multicontenedor:** Levanta el stack completo (`redis-cache` + `api-clima`) mediante `docker compose up -d --build`.
@@ -373,7 +373,7 @@ flowchart TD
 2. **Garantía de Calidad y Seguridad (Quality & Security Gates):**
    - **Umbral Mínimo de Cobertura (80%):** El flag `--cov-fail-under=80` impide integrar código sin pruebas unitarias suficientes.
    - **Bloqueos Automáticos por Vulnerabilidades (Fail-Fast):** Los jobs `validate-static`, `security-scan` y `build-image` actúan como compuertas bloqueantes (`needs:`). Si Hadolint, Bandit, pip-audit, Snyk o SonarCloud detectan un fallo, los jobs posteriores de construcción y despliegue se cancelan automáticamente.
-   - **Actualización Preventiva con Dependabot:** El archivo [`.github/dependabot.yml`](file:///.github/dependabot.yml) revisa semanalmente los ecosistemas `pip`, `docker` y `github-actions`, abriendo PRs automáticos ante nuevas vulnerabilidades.
+   - **Actualización Preventiva con Dependabot:** El archivo [`.github/dependabot.yml`](.github/dependabot.yml) revisa semanalmente los ecosistemas `pip`, `docker` y `github-actions`, abriendo PRs automáticos ante nuevas vulnerabilidades.
 
 ---
 
@@ -392,7 +392,7 @@ El proyecto implementa el principio de **DevSecOps** integrando seguridad automa
 
 ### Estrategia de Orquestación y Escalabilidad con Docker Compose
 
-El archivo [`docker-compose.yml`](file:///docker-compose.yml) define una arquitectura orquestada lista para entornos de mediana y gran envergadura:
+El archivo [`docker-compose.yml`](docker-compose.yml) define una arquitectura orquestada lista para entornos de mediana y gran envergadura:
 
 - **Servicios Acoplados con Control de Salud (`depends_on: service_healthy`):** El servicio `api-clima` espera a que `redis-cache` (`redis:7-alpine`) responda `PONG` en su healthcheck antes de iniciar.
 - **Segmentación de Redes (`frontend` y `backend`):** `api-clima` se conecta a ambas redes, mientras que `redis-cache` permanece aislado exclusivamente en la red `backend`, sin exposición de puertos al exterior.
@@ -427,7 +427,7 @@ El proyecto evidencia el cumplimiento del flujo GitFlow y la trazabilidad del c�
 4. **`feature/actualizar-documentacion` (PR #4):** Refactorización y ampliación de las especificaciones técnicas y operativas del microservicio.
 5. **Release `v1.0.0`:** Etiquetado formal inmutable sobre la rama `main` y publicación del primer release del proyecto.
 6. **`feature/contenedores-orquestacion` (PR #5):** Implementación de `Dockerfile` multi-stage y orquestación multicontenedor con Redis en `docker-compose.yml`.
-7. **`feature/pipeline-cicd-seguridad` (PR #6):** Automatización del pipeline CI/CD de 5 etapas con cobertura obligatoria, bloqueos de seguridad SAST/SCA, despliegue simulado y documentación de trazabilidad.
+7. **`feature/pipeline-cicd-seguridad` (PR #6 y PR #7):** Automatización del pipeline CI/CD de 5 etapas con cobertura obligatoria, bloqueos de seguridad SAST/SCA, ajuste de escaneo Snyk Container, despliegue simulado y documentación de trazabilidad.
 
 ---
 
