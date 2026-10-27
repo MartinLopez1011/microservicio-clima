@@ -1,52 +1,160 @@
-name: Pipeline CI DevOps
+name: Pipeline CI/CD Microservicio Clima
 
 on:
   push:
-    branches:
-      - develop
+    branches: [main, develop]
   pull_request:
-    branches:
-      - main
-      - develop
+    branches: [main, develop]
 
 jobs:
-  integracion_continua:
-    name: Integración Continua y Empaquetado
+  # JOB 1: Commit Stage - Pruebas Unitarias y Cobertura
+  test-app:
+    name: Pruebas Unitarias y Cobertura (PyTest)
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout del código
+      - name: Descargar código
         uses: actions/checkout@v4
 
-      - name: Configurar entorno Python
+      - name: Configurar Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
 
-      - name: Instalar dependencias del proyecto y testing
+      - name: Instalar dependencias
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install pytest pytest-cov
 
-      - name: Verificación de sintaxis del código
-        run: |
-          python -m py_compile main.py test_main.py
+      - name: Ejecutar PyTest con bloqueo por cobertura (< 80% falla)
+        run: pytest test_main.py -v --cov=main --cov-fail-under=80 --cov-report=xml --junitxml=junit-report.xml
 
-      - name: Ejecutar pruebas unitarias automatizadas
-        run: |
-          pytest test_main.py -v --tb=short
-
-      - name: Empaquetar artefacto desplegable
-        run: |
-          mkdir -p dist
-          # Se empaquetan los archivos necesarios para la ejecución del microservicio
-          zip -r dist/microservicio-clima-${{ github.sha }}.zip main.py requirements.txt
-
-      - name: Publicar artefacto de la aplicación (Artifact Build)
+      - name: Subir reporte de cobertura y pruebas para SonarCloud
         uses: actions/upload-artifact@v4
         with:
-          name: microservicio-clima-build
-          path: dist/*.zip
-          retention-days: 14
+          name: coverage-report
+          path: |
+            coverage.xml
+            junit-report.xml
+
+  # JOB 2: Validación Estática de Dockerfile y Workflows
+  validate-static:
+    name: Validación Estática (Hadolint & Actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Validar Dockerfile con Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Validar sintaxis del Workflow con Actionlint
+        uses: raven-actions/actionlint@v2
+
+  # JOB 3: Seguridad SCA (Snyk / pip-audit) y SAST (SonarCloud / Bandit) con Bloqueo
+  security-scan:
+    name: Escaneo de Seguridad SAST/SCA con Bloqueo
+    needs: [test-app, validate-static]
+    runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Descargar código con historial completo para SonarCloud
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Descargar reporte de cobertura
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+
+      - name: Instalar dependencias y escáneres de seguridad
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install bandit pip-audit
+
+      - name: Bloqueo SAST — Análisis estático de seguridad con Bandit (Falla en severidad Media/Alta)
+        run: bandit -r main.py -ll
+
+      - name: Bloqueo SCA — Auditoría de vulnerabilidades en dependencias Python
+        run: pip-audit -r requirements.txt
+
+      - name: Snyk SCA — Escanear dependencias Python (Bloquea en High/Critical)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/python@master
+        with:
+          command: test
+          args: --file=requirements.txt --severity-threshold=high
+
+      - name: SonarCloud SAST — Análisis de Código y Quality Gate con Bloqueo
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarcloud-github-action@master
+        with:
+          args: >
+            -Dsonar.projectKey=MartinLopez1011_microservicio-clima
+            -Dsonar.organization=martinlopez1011
+            -Dsonar.sources=main.py
+            -Dsonar.tests=test_main.py
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.qualitygate.wait=true
+
+  # JOB 4: Construcción y Escaneo de Imagen Docker
+  build-image:
+    name: Construcción y Escaneo de Imagen Docker
+    needs: security-scan
+    runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Construir imagen Docker Multi-stage con trazabilidad SHA
+        run: |
+          docker build \
+            -t microservicio-clima:1.0 \
+            -t "microservicio-clima:${GITHUB_SHA}" \
+            .
+
+      - name: Snyk Container — Escanear imagen Docker (Bloquea en High/Critical)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/docker@master
+        with:
+          image: microservicio-clima:1.0
+          args: --file=Dockerfile --severity-threshold=high --exclude-base-image-vulns
+
+  # JOB 5: Despliegue Automático en Entorno Simulado con Orquestación
+  deploy-simulated:
+    name: Despliegue Simulado y Orquestación (Docker Compose)
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Desplegar stack orquestado con Docker Compose
+        run: docker compose up -d --build
+
+      - name: Verificar estado de salud, Smoke Test y trazabilidad del despliegue
+        run: |
+          sleep 10
+          docker compose ps
+          curl -sSf http://localhost:8000/weather
+          docker compose logs api-clima
+
+      - name: Apagar y limpiar entorno simulado
+        if: always()
+        run: docker compose down -v
