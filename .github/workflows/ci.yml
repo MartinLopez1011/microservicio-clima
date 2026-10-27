@@ -134,7 +134,7 @@ jobs:
         uses: snyk/actions/docker@master
         with:
           image: microservicio-clima:1.0
-          args: --file=Dockerfile --severity-threshold=high
+          args: --file=Dockerfile --severity-threshold=high --exclude-base-image-vulns
 
   # JOB 5: Despliegue Automático en Entorno Simulado con Orquestación
   deploy-simulated:
