@@ -31,7 +31,7 @@ jobs:
         run: pytest test_main.py -v --cov=main --cov-fail-under=80 --cov-report=xml --junitxml=junit-report.xml
 
       - name: Subir reporte de cobertura y pruebas para SonarCloud
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
