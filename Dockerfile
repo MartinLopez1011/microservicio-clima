@@ -1,11 +1,11 @@
 # Etapa 1: Builder (Compilación e instalación de dependencias)
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Etapa 2: Producción (Imagen limpia y segura solo con lo necesario para ejecutar)
-FROM python:3.12-slim
+FROM python:3.15-slim
 WORKDIR /app
 
 # Crear usuario sin privilegios por seguridad
