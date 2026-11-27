@@ -169,7 +169,7 @@ jobs:
       - name: Ejecutar pruebas funcionales HTTP (health, weather, metrics, error-test, 404)
         run: |
           set -e
-          for i in $(seq 1 15); do
+          for _ in $(seq 1 15); do
             if curl -sf http://localhost:8000/health | grep -q '"status":"ok"'; then
               break
             fi
