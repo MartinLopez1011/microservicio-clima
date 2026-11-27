@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI()
 
@@ -11,6 +12,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Instrumentación Prometheus en /metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
 @app.get("/weather")
 def get_weather():
     return {
@@ -19,3 +29,11 @@ def get_weather():
         "status": "Soleado",
         "wind_speed_kmh": 12
     }
+
+
+@app.get("/error-test")
+def error_test():
+    raise HTTPException(
+        status_code=500,
+        detail="Error simulado para validación de métricas 5xx"
+    )

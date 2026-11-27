@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 jobs:
-  # JOB 1: Commit Stage - Pruebas Unitarias y Cobertura
+  # JOB 1: Pruebas Unitarias y Cobertura (>= 80%)
   test-app:
     name: Pruebas Unitarias y Cobertura (PyTest)
     runs-on: ubuntu-latest
@@ -54,13 +54,58 @@ jobs:
       - name: Validar sintaxis del Workflow con Actionlint
         uses: raven-actions/actionlint@v2
 
-  # JOB 3: Seguridad SCA (Snyk / pip-audit) y SAST (SonarCloud / Bandit) con Bloqueo
-  security-scan:
-    name: Escaneo de Seguridad SAST/SCA con Bloqueo
+  # JOB 3: Escaneo SCA de dependencias e imagen Docker con Snyk
+  snyk:
+    name: Seguridad SCA y Contenedor (Snyk)
     needs: [test-app, validate-static]
     runs-on: ubuntu-latest
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalar dependencias y pip-audit
+        run: |
+          pip install -r requirements.txt
+          pip install pip-audit
+
+      - name: Auditoría SCA local con pip-audit
+        run: pip-audit -r requirements.txt
+
+      - name: Snyk SCA — Escanear requirements.txt (Bloquea en High/Critical)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/python@master
+        with:
+          command: test
+          args: --file=requirements.txt --severity-threshold=high
+
+      - name: Construir imagen Docker Multi-stage con trazabilidad SHA
+        run: |
+          docker build \
+            -t microservicio-clima:latest \
+            -t "microservicio-clima:${GITHUB_SHA}" \
+            .
+
+      - name: Snyk Container — Escanear imagen Docker (Bloquea en High/Critical)
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/docker@master
+        with:
+          image: microservicio-clima:latest
+          args: --file=Dockerfile --severity-threshold=high --exclude-base-image-vulns
+
+  # JOB 4: Análisis SAST y Quality Gate en SonarCloud
+  sonar:
+    name: Análisis SAST y Quality Gate (SonarCloud)
+    needs: [test-app, validate-static]
+    runs-on: ubuntu-latest
+    env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -80,26 +125,13 @@ jobs:
         with:
           name: coverage-report
 
-      - name: Instalar dependencias y escáneres de seguridad
-        run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-          pip install bandit pip-audit
+      - name: Instalar Bandit para validación SAST local
+        run: pip install bandit
 
-      - name: Bloqueo SAST — Análisis estático de seguridad con Bandit (Falla en severidad Media/Alta)
+      - name: Bloqueo SAST local con Bandit (Media/Alta)
         run: bandit -r main.py -ll
 
-      - name: Bloqueo SCA — Auditoría de vulnerabilidades en dependencias Python
-        run: pip-audit -r requirements.txt
-
-      - name: Snyk SCA — Escanear dependencias Python (Bloquea en High/Critical)
-        if: env.SNYK_TOKEN != ''
-        uses: snyk/actions/python@master
-        with:
-          command: test
-          args: --file=requirements.txt --severity-threshold=high
-
-      - name: SonarCloud SAST — Análisis de Código y Quality Gate con Bloqueo
+      - name: SonarCloud SAST — Quality Gate con Bloqueo
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarcloud-github-action@master
         with:
@@ -111,50 +143,67 @@ jobs:
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.qualitygate.wait=true
 
-  # JOB 4: Construcción y Escaneo de Imagen Docker
-  build-image:
-    name: Construcción y Escaneo de Imagen Docker
-    needs: security-scan
+  # JOB 5: Despliegue en AWS EC2 (k3s / Docker Compose) y Métrica de Tiempo de Despliegue
+  deploy:
+    name: Despliegue en AWS EC2 y Métrica de Entrega
+    needs: [test-app, validate-static, snyk, sonar]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    env:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    permissions:
+      contents: write
     steps:
       - name: Descargar código
         uses: actions/checkout@v4
-
-      - name: Construir imagen Docker Multi-stage con trazabilidad SHA
-        run: |
-          docker build \
-            -t microservicio-clima:1.0 \
-            -t "microservicio-clima:${GITHUB_SHA}" \
-            .
-
-      - name: Snyk Container — Escanear imagen Docker (Bloquea en High/Critical)
-        if: env.SNYK_TOKEN != ''
-        uses: snyk/actions/docker@master
         with:
-          image: microservicio-clima:1.0
-          args: --file=Dockerfile --severity-threshold=high --exclude-base-image-vulns
+          fetch-depth: 0
 
-  # JOB 5: Despliegue Automático en Entorno Simulado con Orquestación
-  deploy-simulated:
-    name: Despliegue Simulado y Orquestación (Docker Compose)
-    needs: build-image
-    runs-on: ubuntu-latest
-    steps:
-      - name: Descargar código
-        uses: actions/checkout@v4
+      - name: Registrar inicio del despliegue
+        run: echo "INICIO=$(date +%s)" >> "$GITHUB_ENV"
 
-      - name: Desplegar stack orquestado con Docker Compose
-        run: docker compose up -d --build
+      - name: Desplegar en AWS EC2 vía SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            REPO_DIR="$HOME/microservicio-clima"
+            if [ ! -d "$REPO_DIR" ]; then
+              git clone https://github.com/MartinLopez1011/microservicio-clima.git "$REPO_DIR"
+            fi
+            cd "$REPO_DIR"
+            git fetch origin main
+            git reset --hard origin/main
 
-      - name: Verificar estado de salud, Smoke Test y trazabilidad del despliegue
+            if command -v kubectl >/dev/null 2>&1 && kubectl cluster-info >/dev/null 2>&1; then
+              echo "Desplegando en clúster Kubernetes (k3s)..."
+              docker build -t microservicio-clima:latest .
+              if command -v k3s >/dev/null 2>&1; then
+                docker save microservicio-clima:latest | sudo k3s ctr images import -
+              fi
+              kubectl apply -f k8s/
+              kubectl rollout restart deployment/api-clima
+              kubectl rollout status deployment/api-clima --timeout=120s
+            else
+              echo "Desplegando stack de observabilidad con Docker Compose..."
+              cd observability
+              docker compose up -d --build
+            fi
+
+      - name: Calcular duración del despliegue
         run: |
-          sleep 10
-          docker compose ps
-          curl -sSf http://localhost:8000/weather
-          docker compose logs api-clima
+          DURACION=$(($(date +%s) - INICIO))
+          echo "DURACION=${DURACION}" >> "$GITHUB_ENV"
+          echo "Tiempo total de despliegue: ${DURACION}s"
 
-      - name: Apagar y limpiar entorno simulado
-        if: always()
-        run: docker compose down -v
+      - name: Actualizar métrica de tiempo de despliegue en README.md
+        run: |
+          sed -i "s|<!-- deploy-time -->.*<!-- /deploy-time -->|<!-- deploy-time -->${DURACION}s<!-- /deploy-time -->|g" README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet README.md; then
+            git add README.md
+            git commit -m "chore(ci): actualiza tiempo de despliegue a ${DURACION}s [skip ci]"
+            git push origin HEAD:main
+          fi
