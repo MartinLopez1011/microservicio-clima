@@ -202,6 +202,9 @@ cd observability && docker compose down -v
 
 ### Despliegue en AWS EC2 (k3s y Docker Compose)
 
+> [!NOTE]
+> **Entorno de Nube Utilizado (Cuenta Comercial de AWS):** Para este proyecto el despliegue se realiza sobre una **cuenta comercial de AWS** (en lugar de AWS Academy). Por buenas prácticas de FinOps y control de costos, la instancia EC2 se mantiene encendida únicamente bajo demanda durante las pruebas y validaciones, y se detiene automáticamente fuera de horario (mediante **Amazon EventBridge Scheduler** o apagado programado en el sistema operativo).
+
 #### Opción A: Clúster Kubernetes ligero (`k3s`) en AWS EC2 (`t3.small` / `t3.medium`, Ubuntu)
 ```bash
 # 1. Instalar Docker y k3s en la instancia EC2
