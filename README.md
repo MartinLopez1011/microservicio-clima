@@ -10,7 +10,7 @@ Microservicio REST desarrollado con Python y FastAPI. Expone endpoints de consul
 
 | Métrica | Valor Actual |
 | :--- | :--- |
-| **Tiempo de último despliegue en AWS EC2** | <!-- deploy-time -->0s<!-- /deploy-time --> |
+| **Tiempo de último despliegue en AWS EC2** | <!-- deploy-time -->10s<!-- /deploy-time --> |
 | **Umbral mínimo de cobertura (PyTest)** | ≥ 80% |
 | **Política SCA (Snyk)** | Bloqueo en severidad `high` / `critical` |
 | **Política SAST (SonarCloud)** | Quality Gate bloqueante (`sonar.qualitygate.wait=true`) |
