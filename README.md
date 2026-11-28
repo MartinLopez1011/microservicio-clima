@@ -4,16 +4,9 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=MartinLopez1011_microservicio-clima&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=MartinLopez1011_microservicio-clima)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=MartinLopez1011_microservicio-clima&metric=coverage)](https://sonarcloud.io/summary/new_code?id=MartinLopez1011_microservicio-clima)
 
-Microservicio REST desarrollado con Python y FastAPI. Expone endpoints de consulta meteorológica, salud y métricas Prometheus, respaldado por un stack de observabilidad (Prometheus, Grafana, cAdvisor, CloudWatch Logs), manifiestos Kubernetes (`k3s`) y un pipeline CI/CD endurecido en GitHub Actions.
+Microservicio REST desarrollado con Python y FastAPI. Expone un endpoint de consulta meteorológica, salud y métricas Prometheus, con CI/CD automatizado en GitHub Actions, observabilidad (Prometheus, Grafana, cAdvisor, CloudWatch Logs) y despliegue en AWS EC2.
 
-### Métricas del Pipeline y Entrega Continua
-
-| Métrica | Valor Actual |
-| :--- | :--- |
-| **Tiempo de último despliegue en AWS EC2** | <!-- deploy-time -->10s<!-- /deploy-time --> |
-| **Umbral mínimo de cobertura (PyTest)** | ≥ 80% |
-| **Política SCA (Snyk)** | Bloqueo en severidad `high` / `critical` |
-| **Política SAST (SonarCloud)** | Quality Gate bloqueante (`sonar.qualitygate.wait=true`) |
+**Tiempo de último despliegue en AWS EC2:** <!-- deploy-time -->10s<!-- /deploy-time -->
 
 ---
 
@@ -22,12 +15,7 @@ Microservicio REST desarrollado con Python y FastAPI. Expone endpoints de consul
 1. [Requisitos e Instalación Local](#requisitos-e-instalación-local)
 2. [Ejecución de Pruebas Automatizadas](#ejecución-de-pruebas-automatizadas)
 3. [Especificación de Endpoints](#especificación-de-endpoints)
-4. [Observabilidad, Monitoreo y Despliegue en Nube (AWS EC2 / k3s)](#observabilidad-monitoreo-y-despliegue-en-nube-aws-ec2--k3s)
-   - [Diagrama de Flujo End-to-End (Commit a Monitoreo)](#diagrama-de-flujo-end-to-end-commit-a-monitoreo)
-   - [Tabla de Decisiones Técnicas y Gobernanza](#tabla-de-decisiones-técnicas-y-gobernanza)
-   - [Levantamiento Local del Stack de Observabilidad](#levantamiento-local-del-stack-de-observabilidad)
-   - [Despliegue en AWS EC2 (k3s y Docker Compose)](#despliegue-en-aws-ec2-k3s-y-docker-compose)
-   - [Prueba de Demostración de Fallo de Seguridad en CI/CD](#prueba-de-demostración-de-fallo-de-seguridad-en-cicd)
+4. [Observabilidad y Despliegue en Nube (AWS EC2 / k3s)](#observabilidad-y-despliegue-en-nube-aws-ec2--k3s)
 5. [Estrategias y Modelos de Ramificación (Branching Strategies)](#estrategias-y-modelos-de-ramificación-branching-strategies)
 6. [Guía de Buenas Prácticas para el Uso de Repositorios DevOps](#guía-de-buenas-prácticas-para-el-uso-de-repositorios-devops)
 7. [Contenerización con Docker](#contenerización-con-docker)
@@ -75,186 +63,77 @@ El servicio estará disponible en `http://127.0.0.1:8000` y la documentación in
 
 ## Ejecución de Pruebas Automatizadas
 
-El proyecto incluye una suite de pruebas unitarias y de integración implementadas con `pytest` y `TestClient`:
+El proyecto incluye una suite de pruebas unitarias y de integración implementadas con `pytest` y `TestClient` (configurada en `pytest.ini`):
 
 ```bash
-pytest test_main.py -v --cov=main --cov-fail-under=80
+pytest
 ```
 
 Estas pruebas verifican:
-- Código de estado HTTP 200 en consultas válidas.
+- Código de estado HTTP 200 en `/weather`, `/health` y `/metrics`, más `HTTP 500` en `/error-test` y casos negativos (`404`/`405`).
 - Integridad y tipado de los campos devueltos en el esquema JSON (`location`, `temperature`, `status`, `wind_speed_kmh`).
 - Comportamiento y cabeceras de seguridad del middleware CORS.
-- Cobertura de código igual o superior al 80%.
+- Cobertura de líneas y ramas igual o superior al 80%.
 
 ---
 
 ## Especificación de Endpoints
 
-### `GET /weather`
-Consulta el pronóstico climático actual de la estación meteorológica configurada (`HTTP 200 OK`):
-
-```json
-{
-  "location": "Valparaíso",
-  "temperature": 18,
-  "status": "Soleado",
-  "wind_speed_kmh": 12
-}
-```
-
-### `GET /health`
-Endpoint de salud utilizado por Docker `HEALTHCHECK` y las sondas `livenessProbe` / `readinessProbe` de Kubernetes (`HTTP 200 OK`):
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### `GET /metrics`
-Expone métricas operacionales en formato **Prometheus** generadas por `prometheus-fastapi-instrumentator` (contadores `http_requests_total`, histogramas de latencia `http_request_duration_seconds_*`, métricas de proceso Python).
-
-### `GET /error-test`
-Endpoint controlado de prueba que responde `HTTP 500 Internal Server Error` para generar tráfico de errores y validar las gráficas de tasa de errores 5xx en Prometheus y Grafana.
+- **`GET /weather`**: Retorna el pronóstico climático (`HTTP 200 OK`):
+  ```json
+  { "location": "Valparaíso", "temperature": 18, "status": "Soleado", "wind_speed_kmh": 12 }
+  ```
+- **`GET /health`**: Comprobación de salud (`{"status": "ok"}`) para Docker y sondas de Kubernetes.
+- **`GET /metrics`**: Métricas en formato Prometheus (`prometheus-fastapi-instrumentator`).
+- **`GET /error-test`**: Genera un `HTTP 500` controlado para validar métricas de errores en Grafana.
 
 ---
 
-## Observabilidad, Monitoreo y Despliegue en Nube (AWS EC2 / k3s)
+## Observabilidad y Despliegue en Nube (AWS EC2 / k3s)
 
-### Diagrama de Flujo End-to-End (Commit a Monitoreo)
+### Flujo End-to-End (Commit a Monitoreo)
 
 ```text
-[Developer Commit / PR]
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    GitHub Actions (Pipeline CI/CD)                      │
-│  1. test-app        ──► PyTest + Cobertura >= 80% (coverage.xml)        │
-│  2. validate-static ──► Hadolint (Dockerfile) + Actionlint (Workflows)  │
-│  3. snyk            ──► SCA (requirements.txt + Docker Image >= high)   │
-│  4. sonar           ──► SAST Bandit + SonarCloud Quality Gate (wait)    │
-└─────────────────────────────────┬───────────────────────────────────────┘
-                                  │ (Solo en push a main si todo pasa)
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│               Job deploy (SSH hacia AWS EC2 + Métrica)                  │
-│  • Registra INICIO=$(date +%s)                                          │
-│  • Aplica manifiestos k8s/ en k3s (o observability/docker-compose.yml)  │
-│  • Calcula DURACION y actualiza <!-- deploy-time --> en README.md       │
-└─────────────────────────────────┬───────────────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│              Runtime + Stack de Observabilidad en Nube                  │
-│  api-clima (/weather, /health, /metrics, /error-test)                   │
-│     ├──► Logs centralizados ──► Amazon CloudWatch Logs (driver awslogs) │
-│     ├──► Métricas app       ──► Prometheus (scrape 15s) ──► Grafana     │
-│     └──► Métricas host/cont ──► cAdvisor (CPU / RAM)    ──► Dashboard   │
-└─────────────────────────────────────────────────────────────────────────┘
+Commit / PR ──► CI/CD (PyTest >=80% · Ruff · Hadolint/Actionlint · Snyk · SonarCloud · Integration)
+                      │ (solo push a main)
+                      ▼
+               Deploy SSH a AWS EC2 (k3s / Docker Compose) ──► Actualiza deploy-time en README.md
+                      │
+                      ▼
+               Observabilidad: Prometheus (15s) + cAdvisor ──► Grafana (Dashboard como Código)
+                               Logs de contenedor ──────────► Amazon CloudWatch Logs (awslogs)
 ```
 
----
+### Tabla de Decisiones Técnicas
 
-### Tabla de Decisiones Técnicas y Gobernanza
-
-| Herramienta | ¿Qué pregunta responde? | ¿Qué bloquea? | ¿Qué acción técnica habilita? |
+| Herramienta | ¿Qué pregunta responde? | ¿Qué bloquea? | Acción técnica que habilita |
 | :--- | :--- | :--- | :--- |
-| **Pytest (`--cov-fail-under=80`)** | ¿El código nuevo cumple la lógica esperada sin regresiones ni zonas sin probar? | Bloquea el job `test-app` y todos los jobs dependientes si falla un test o la cobertura cae bajo el 80%. | Refactorizar o agregar pruebas unitarias bajo patrón AAA antes de integrar el cambio. |
-| **Snyk (SCA + Container)** | ¿Existen vulnerabilidades conocidas (CVE) en dependencias Python o capas de la imagen Docker? | Bloquea el job `snyk` ante vulnerabilidades de severidad `high` o `critical`. | Actualizar versiones en `requirements.txt`, parchar la imagen base o reemplazar librerías inseguras. |
-| **SonarCloud (SAST + Quality Gate)** | ¿El código fuente presenta bugs, vulnerabilidades estáticas, *code smells* o deuda técnica? | Bloquea el job `sonar` (`-Dsonar.qualitygate.wait=true`) cuando no se aprueba el Quality Gate. | Corregir hallazgos SAST/mantenibilidad señalados por línea exacta en el Pull Request. |
-| **Branch Protection (`main`)** | ¿Se garantiza que ningún código llegue a producción sin revisión ni validaciones CI? | Bloquea *pushes* directos y *merges* sin aprobación de PR o con checks fallidos (`test-app`, `validate-static`, `snyk`, `sonar`). | Enforce de gobernanza GitFlow y trazabilidad auditable de cada cambio promovido a `main`. |
-| **Prometheus + cAdvisor + Grafana** | ¿El servicio está disponible (`up`), cuántas peticiones/errores 5xx atiende, cuál es su latencia y cuánto CPU/RAM consume? | No bloquea CI, pero evidencia degradaciones o caídas en tiempo real mediante paneles y umbrales. | Diagnosticar cuellos de botella, ajustar `resources.limits` en k8s, escalar réplicas o ejecutar *rollback*. |
-| **Amazon CloudWatch Logs (`awslogs`)** | ¿Qué ocurrió exactamente a nivel de traza/excepción dentro del contenedor en producción? | Preserva evidencia forense fuera del ciclo efímero del contenedor. | Centralizar auditoría, buscar errores por *log stream* y configurar alarmas ante patrones de fallo. |
+| **Pytest (`>=80%`)** | ¿El código funciona sin regresiones ni zonas sin probar? | Falla `test-app` y detiene el pipeline si la cobertura cae bajo 80%. | Corregir lógica o agregar pruebas AAA antes del merge. |
+| **Snyk (SCA + Docker)** | ¿Hay CVEs conocidos en librerías Python o en la imagen? | Bloquea `snyk` ante severidad `high`/`critical`. | Actualizar `requirements.txt` o parchar la imagen base. |
+| **SonarCloud (SAST)** | ¿Existen vulnerabilidades estáticas, bugs o deuda técnica? | Bloquea `sonar` (`sonar.qualitygate.wait=true`). | Remediar hallazgos señalados en el Pull Request. |
+| **Branch Protection** | ¿Todo cambio a `main` pasó revisión y checks CI? | Bloquea pushes directos y merges con checks en rojo. | Garantiza gobernanza GitFlow y protege producción. |
+| **Prometheus + cAdvisor + Grafana** | ¿El servicio está `up`? ¿Cuál es su RPS, tasa 5xx, latencia y CPU/RAM? | Evidencia degradaciones o caídas en tiempo real. | Ajustar límites de recursos, escalar réplicas o hacer *rollback*. |
+| **CloudWatch Logs** | ¿Qué traza exacta ocurrió dentro del contenedor en producción? | Preserva logs fuera del ciclo efímero del contenedor. | Auditoría centralizada y diagnóstico rápido de incidentes. |
 
----
-
-### Levantamiento Local del Stack de Observabilidad
-
-```bash
-# Levantar api-clima, Prometheus, Grafana y cAdvisor
-cd observability
-docker compose up -d --build
-
-# Verificar servicios activos
-docker compose ps
-
-# Generar tráfico normal y tráfico de error 5xx para poblar métricas
-for i in {1..15}; do curl -s http://localhost:8000/weather > /dev/null; done
-for i in {1..5}; do curl -s http://localhost:8000/error-test > /dev/null; done
-
-# Inspeccionar métricas crudas de Prometheus
-curl -s http://localhost:8000/metrics | head -n 30
-```
-
-Accesos locales:
-- **API Clima:** `http://localhost:8000/weather` | Salud: `http://localhost:8000/health` | Métricas: `http://localhost:8000/metrics`
-- **Prometheus:** `http://localhost:9090` (Targets en `http://localhost:9090/targets`)
-- **Grafana:** `http://localhost:3000` (Usuario: `admin` / Contraseña: `admin` — Dashboard aprovisionado automáticamente en carpeta **Observabilidad** -> *Microservicio Clima - Observabilidad*)
-- **cAdvisor:** `http://localhost:8080`
-
-Para detener el stack:
-```bash
-cd observability && docker compose down -v
-```
-
----
-
-### Despliegue en AWS EC2 (k3s y Docker Compose)
+### Ejecución Local y Despliegue en AWS EC2
 
 > [!NOTE]
-> **Entorno de Nube Utilizado (Cuenta Comercial de AWS):** Para este proyecto el despliegue se realiza sobre una **cuenta comercial de AWS** (en lugar de AWS Academy). Por buenas prácticas de FinOps y control de costos, la instancia EC2 se mantiene encendida únicamente bajo demanda durante las pruebas y validaciones, y se detiene automáticamente fuera de horario (mediante **Amazon EventBridge Scheduler** o apagado programado en el sistema operativo).
+> **Cuenta Comercial de AWS:** El despliegue en nube se realizó sobre una **cuenta comercial de AWS** (en lugar de AWS Academy). Por control de costos (FinOps), la instancia EC2 se enciende solo bajo demanda y se detiene al finalizar las pruebas.
 
-#### Opción A: Clúster Kubernetes ligero (`k3s`) en AWS EC2 (`t3.small` / `t3.medium`, Ubuntu)
-```bash
-# 1. Instalar Docker y k3s en la instancia EC2
-sudo apt-get update && sudo apt-get install -y docker.io git curl
-sudo usermod -aG docker ubuntu
-curl -sfL https://get.k3s.io | sh -
-mkdir -p ~/.kube && sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config && sudo chown ubuntu:ubuntu ~/.kube/config
-
-# 2. Clonar repositorio, construir imagen e importarla en k3s
-git clone https://github.com/MartinLopez1011/microservicio-clima.git
-cd microservicio-clima
-docker build -t microservicio-clima:latest .
-docker save microservicio-clima:latest | sudo k3s ctr images import -
-
-# 3. Aplicar manifiestos declarativos
-kubectl apply -f k8s/
-kubectl get pods,svc
-```
-Puertos NodePort expuestos en la IP pública de EC2 (abrir en Security Group):
-- **API Clima:** `http://<EC2_PUBLIC_IP>:30080/weather`
-- **Prometheus:** `http://<EC2_PUBLIC_IP>:30090`
-- **Grafana:** `http://<EC2_PUBLIC_IP>:30300`
-
-#### Opción B: Stack completo con Docker Compose en AWS EC2 (incluyendo CloudWatch Logs)
-```bash
-git clone https://github.com/MartinLopez1011/microservicio-clima.git
-cd microservicio-clima/observability
-# (Opcional) Descomentar el bloque `logging: driver: awslogs` en observability/docker-compose.yml
-docker compose up -d --build
-```
-
----
-
-### Prueba de Demostración de Fallo de Seguridad en CI/CD
-
-Para evidenciar el bloqueo automático de las compuertas de seguridad en un Pull Request hacia `main`:
-
-```bash
-# 1. Crear una rama de prueba
-git checkout -b test/demo-bloqueo-seguridad
-
-# 2. Introducir una dependencia con vulnerabilidad conocida (ej. pyyaml==5.3.1 o urllib3==1.25.8) en requirements.txt
-echo "pyyaml==5.3.1" >> requirements.txt
-
-# 3. Commit y push para abrir Pull Request hacia main
-git add requirements.txt
-git commit -m "test(security): introduce dependencia vulnerable para evidenciar bloqueo SCA"
-git push -u origin test/demo-bloqueo-seguridad
-```
-Al abrir el Pull Request en GitHub, el job `snyk` (`pip-audit` + `snyk/actions/python`) fallará con severidad `high`/`critical` y **Branch Protection** impedirá hacer merge hacia `main` hasta remediar el hallazgo.
+- **Stack local (`observability/docker-compose.yml`):**
+  ```bash
+  cd observability && docker compose up -d --build
+  ```
+  Accesos: API `:8000` · Prometheus `:9090` · Grafana `:3000` (`admin`/`admin`) · cAdvisor `:8080`.
+- **Despliegue en AWS EC2 (`k3s` o Compose):**
+  - El pipeline despliega automáticamente por SSH en EC2 usando `observability/docker-compose.yml` (o `kubectl apply -f k8s/` si `k3s` está instalado, exponiendo NodePorts `30080`, `30090` y `30300`).
+- **Demo de bloqueo de seguridad (SCA):**
+  ```bash
+  git checkout -b test/demo-bloqueo-seguridad
+  echo "pyyaml==5.3.1" >> requirements.txt
+  git commit -am "test(security): prueba bloqueo SCA" && git push -u origin test/demo-bloqueo-seguridad
+  ```
+  Al abrir el PR hacia `main`, `snyk` falla por severidad `high`/`critical` y Branch Protection bloquea el merge.
 
 ---
 
